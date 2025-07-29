@@ -87,8 +87,8 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	log.Println("Tokenizer HTTP server listening on :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	log.Println("Tokenizer HTTP server listening on ", addr)
+	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
 }
