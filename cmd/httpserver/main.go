@@ -21,18 +21,47 @@ type tokenizeResponse struct {
 }
 
 func main() {
-	modelsEnv := os.Getenv("TOKENIZER_MODELS") // e.g. "llama3=https://.../llama3.model,tiny=https://.../tiny.model"
-	modelMap := make(map[string]string)
-	for _, kv := range strings.Split(modelsEnv, ",") {
-		parts := strings.SplitN(kv, "=", 2)
-		if len(parts) == 2 {
-			modelMap[parts[0]] = parts[1]
-		}
+	addr := os.Getenv("ADDR")
+	if addr == "" {
+		addr = ":8080"
 	}
 
-	tokenizer, err := ollamatokenizer.NewTokenizer(
-		ollamatokenizer.TokenizerWithModelMap(modelMap),
-	)
+	// Get fallback model (default to empty)
+	fallbackModel := os.Getenv("FALLBACK_MODEL")
+
+	// Get preload models
+	preloadModels := strings.Split(os.Getenv("PRELOAD_MODELS"), ",")
+
+	// Use default URLs if requested
+	useDefaultURLs := os.Getenv("USE_DEFAULT_URLS") == "true"
+
+	// Parse model URLs if provided
+	var tokenizerOpts []ollamatokenizer.TokenizerOption
+
+	// Only use custom models if USE_DEFAULT_URLS is not "true"
+	if !useDefaultURLs {
+		modelsEnv := os.Getenv("TOKENIZER_MODELS")
+		modelMap := make(map[string]string)
+		for kv := range strings.SplitSeq(modelsEnv, ",") {
+			parts := strings.SplitN(kv, "=", 2)
+			if len(parts) == 2 {
+				modelMap[parts[0]] = parts[1]
+			}
+		}
+		tokenizerOpts = append(tokenizerOpts, ollamatokenizer.TokenizerWithModelMap(modelMap))
+	}
+
+	// Add fallback model option if specified
+	if fallbackModel != "" {
+		tokenizerOpts = append(tokenizerOpts, ollamatokenizer.TokenizerWithFallbackModel(fallbackModel))
+	}
+
+	// Preload models if specified
+	if len(preloadModels) > 0 && preloadModels[0] != "" {
+		tokenizerOpts = append(tokenizerOpts, ollamatokenizer.TokenizerWithPreloadedModels(preloadModels...))
+	}
+
+	tokenizer, err := ollamatokenizer.NewTokenizer(tokenizerOpts...)
 	if err != nil {
 		log.Fatalf("Failed to init tokenizer: %v", err)
 	}
