@@ -20,6 +20,15 @@ type tokenizeResponse struct {
 	Count  int   `json:"count"`
 }
 
+type countRequest struct {
+	Model  string `json:"model"`
+	Prompt string `json:"prompt"`
+}
+
+type countResponse struct {
+	Count int `json:"count"`
+}
+
 func main() {
 	addr := os.Getenv("ADDR")
 	if addr == "" {
@@ -42,7 +51,7 @@ func main() {
 	if !useDefaultURLs {
 		modelsEnv := os.Getenv("TOKENIZER_MODELS")
 		modelMap := make(map[string]string)
-		for kv := range strings.SplitSeq(modelsEnv, ",") {
+		for _, kv := range strings.Split(modelsEnv, ",") {
 			parts := strings.SplitN(kv, "=", 2)
 			if len(parts) == 2 {
 				modelMap[parts[0]] = parts[1]
@@ -79,6 +88,25 @@ func main() {
 			return
 		}
 		resp := tokenizeResponse{Tokens: tokens, Count: len(tokens)}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	// Add the /count endpoint for direct token counting
+	http.HandleFunc("/count", func(w http.ResponseWriter, r *http.Request) {
+		var req countRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+
+		count, err := tokenizer.CountTokens(req.Model, req.Prompt)
+		if err != nil {
+			http.Error(w, "count tokens failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		resp := countResponse{Count: count}
+		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
