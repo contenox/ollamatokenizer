@@ -306,3 +306,32 @@ func TestTokenCount(t *testing.T) {
 	t.Logf("Token count for benchmark text: %d", tokenCount)
 	require.Equal(t, 13, tokenCount)
 }
+
+func TestCountTokensLargeInput(t *testing.T) {
+	defer quiet()()
+
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+
+	tokenizer, err := ollamatokenizer.NewTokenizer(
+		ollamatokenizer.TokenizerWithHTTPClient(httpClient),
+		ollamatokenizer.TokenizerWithFallbackModel("tiny"),
+	)
+	require.NoError(t, err, "failed to initialize tokenizer")
+
+	// Create a large input that definitely exceeds the 16KB limit
+	// Using a repeating pattern to ensure we have enough data
+	baseText := "This is a large text input that will be repeated to exceed the 16KB limit. "
+	largeInput := strings.Repeat(baseText, 500) // Should be well over 16KB
+
+	// Verify it's actually large enough
+	require.Greater(t, len(largeInput), 16*1024, "test input should exceed 16KB limit")
+
+	// Test that CountTokens doesn't error with large input
+	count, err := tokenizer.CountTokens("tiny", largeInput)
+
+	// We only care that it doesn't error
+	require.NoError(t, err, "CountTokens should not error with large input")
+	require.Greater(t, count, 0, "should have tokenized at least some tokens")
+
+	t.Logf("Successfully tokenized large input (%d bytes) into %d tokens", len(largeInput), count)
+}

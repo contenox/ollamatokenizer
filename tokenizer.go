@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"maps"
 
@@ -342,13 +343,45 @@ func (c *ollamatokenizer) loadModel(modelName string) (*llama.Model, error) {
 }
 
 func (c *ollamatokenizer) CountTokens(modelName, prompt string) (int, error) {
-	// todo tokenize each chunk of 16384 bytes and sum the count
-	a, err := c.Tokenize(modelName, prompt)
+	// For consistency, always use chunking approach or always use direct approach
+	// Option 1: Always use chunking (recommended)
+	model, err := c.loadModel(modelName)
 	if err != nil {
 		return 0, err
 	}
-	count := len(a)
-	return count, nil
+
+	b := []byte(prompt)
+	total := 0
+	i := 0
+	isFirstChunk := true
+
+	for i < len(b) {
+		end := i + maxPromptBytes
+		if end >= len(b) {
+			end = len(b)
+		} else {
+			for end > i && !utf8.RuneStart(b[end]) {
+				end--
+			}
+			if end == i {
+				end = i + 1
+			}
+		}
+
+		chunk := string(b[i:end])
+		addBOS := isFirstChunk
+		parseSpecial := true
+
+		toks, err := model.Tokenize(chunk, addBOS, parseSpecial)
+		if err != nil {
+			return 0, fmt.Errorf("tokenization failed for bytes %d-%d: %w", i, end, err)
+		}
+		total += len(toks)
+		i = end
+		isFirstChunk = false
+	}
+
+	return total, nil
 }
 
 // Tokenize tokenizes the given text using the specified model.
@@ -371,10 +404,7 @@ func (c *ollamatokenizer) Tokenize(modelName, prompt string) ([]int, error) {
 }
 
 func (c *ollamatokenizer) OptimalTokenizerModel(basedOnModel string) (string, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if c.modelURLs == nil || len(c.modelURLs) == 0 {
+	if len(c.modelURLs) == 0 {
 		return "", fmt.Errorf("No models configured.")
 	}
 	basedOnModel = strings.ToLower(basedOnModel)
